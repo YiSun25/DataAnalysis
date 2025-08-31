@@ -1,4 +1,4 @@
--- ✅ 创建数据库
+-- 创建数据库
 CREATE DATABASE IF NOT EXISTS northwind;
 USE northwind;
 
@@ -23,7 +23,7 @@ CREATE TABLE employees (
   title VARCHAR(30),  -- 职位
   city VARCHAR(18),  -- 城市
   country VARCHAR(13),  -- 国家
-  reportsTo DECIMAL(10,2)  -- 上级员工 ID（可能为空）
+  reportsTo DECIMAL(10,2)  -- 上级员工 ID
 );
 
 CREATE TABLE order_details (
@@ -38,14 +38,14 @@ CREATE TABLE orders (
   orderID INT,  -- 订单 ID
   customerID VARCHAR(15),  -- 客户 ID
   employeeID INT,  -- 员工 ID
-  orderDate VARCHAR(20),  -- 订单日期（原始 CSV 是文本）
+  orderDate VARCHAR(20),  -- 订单日期, here use VARCHAR
   requiredDate VARCHAR(20),  -- 要求日期
   shippedDate VARCHAR(20),  -- 发货日期
   shipperID INT,  -- 物流商 ID
   freight DECIMAL(10,2)  -- 运费
 );
 
--- ✅ customers 表：客户信息
+-- customers 表：客户信息
 CREATE TABLE products (
   productID INT,  -- 产品 ID
   productName VARCHAR(42),  -- 产品名称
@@ -57,20 +57,20 @@ CREATE TABLE products (
 
 
 
--- ✅ shippers 表：物流公司信息
+-- shippers 表：物流公司信息
 CREATE TABLE shippers (
   shipper_id INT PRIMARY KEY,  -- 物流公司 ID
   company_name VARCHAR(100),  -- 公司名称
   phone VARCHAR(50)  -- 联系电话
 );
 
--- ✅ products 表：产品信息
+-- products 表：产品信息
 CREATE TABLE products (
   product_id INT PRIMARY KEY,  -- 产品 ID
   product_name VARCHAR(100),  -- 产品名称
-  supplier_id INT,  -- 供应商 ID（数据中可能为空，这里保留但不加外键）
+  supplier_id INT,  -- 供应商 ID
   category_id INT,  -- 外键：类别 ID
-  quantity_per_unit VARCHAR(50),  -- 包装规格（如 10 boxes x 20 bags）
+  quantity_per_unit VARCHAR(50),  -- 包装规格
   unit_price DECIMAL(10,2),  -- 单价
   units_in_stock INT,  -- 库存数量
   units_on_order INT,  -- 订购中数量
@@ -79,7 +79,7 @@ CREATE TABLE products (
   FOREIGN KEY (category_id) REFERENCES categories(category_id)  -- 外键约束
 );
 
--- ✅ orders 表：订单信息
+-- orders 表：订单信息
 CREATE TABLE orders (
   order_id INT PRIMARY KEY,  -- 订单 ID
   customer_id VARCHAR(10),  -- 外键：客户 ID
@@ -94,13 +94,13 @@ CREATE TABLE orders (
   FOREIGN KEY (ship_via) REFERENCES shippers(shipper_id)
 );
 
--- ✅ order_details 表：订单明细
+-- order_details 表：订单明细
 CREATE TABLE order_details (
   order_id INT,  -- 外键：订单 ID
   product_id INT,  -- 外键：产品 ID
   unit_price DECIMAL(10,2),  -- 下单时单价
   quantity INT,  -- 数量
-  discount DECIMAL(4,2),  -- 折扣（如 0.1 表示 10%）
+  discount DECIMAL(4,2),  -- 折扣
   PRIMARY KEY (order_id, product_id),  -- 联合主键（每个订单中某个产品唯一）
   FOREIGN KEY (order_id) REFERENCES orders(order_id),  -- 订单外键
   FOREIGN KEY (product_id) REFERENCES products(product_id)  -- 产品外键
