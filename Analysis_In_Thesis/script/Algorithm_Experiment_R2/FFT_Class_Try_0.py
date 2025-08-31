@@ -1,0 +1,385 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 16 14:29:22 2024
+
+@author: yisss
+"""
+import numpy as np
+from fxpmath import Fxp
+import cmath
+import math
+import os
+import random
+import pandas as pd
+import matplotlib.pyplot as plt
+
+class R2_DIF_FFT:
+    def __init__(self, N, n_Word, n_Word_TF):
+        self.N = N
+        self.stages = int(math.log(N,2)) # total stages
+        self.n_Word = n_Word
+        self.n_Word_TF = n_Word_TF
+        self.method = "floor"
+        
+    # generate twiddle factor (floating point and fixed point)
+    def TF_Gen(self):
+        self.TF_array_accu = np.zeros((self.stages,self.N >> 1), dtype = np.cdouble)
+        for i in range(self.stages):
+            for j in range((2**(self.stages-1))//(2**i)):
+                self.TF_array_accu[i][j] = cmath.exp((-1j) * 2 * math.pi * j / (2**(self.stages-i))) 
+        # change TF_array to fixed point
+        # self.TF_array_fixed =  Fxp(self.TF_array_accu, True, self.n_Word_TF, (self.n_Word_TF - 2)) 
+        # return TF_array_accu, TF_array_fixed
+    
+    # DIF radix-2 BF
+    def BF_r2(self, in0, in1, TF):
+        # print(in0, in1, TF)
+        out0 = complex(in0 + in1)/2 # multiply 1/2 for scaling, to avoid overflow, when do scaling in fixed point, note the 
+        out1 = complex(in0 - in1)/2*TF
+        # print(out0,out1)
+        return out0, out1
+    
+    def bit_reverse(self,n):                             ### 这里本来是 bit_reverse(n), 但是n的值是变量self.N,所以这里是否需要修改？？？
+        result = 0
+        for i in range (self.stages):                    ### 所有的 stages 还有N都可以写在最前面吗？
+            result <<= 1
+            result |= n & 1
+            n >>= 1
+        return result  # e.g. if n = 1, result = 4
+    
+    def FFT_Accuracy(self, IN_vec):   # maybe later can also add the variable of fraction number , r=1
+        OUT_vec_accu = np.zeros((self.N, self.stages+1), dtype = np.cdouble)
+        OUT_vec_accu[:,0] = IN_vec
+        
+
+        for i in range(self.stages-1, -1, -1): # if N = 128, i = 6,5,4,3,2,1,0
+            n = 2**(i+1) # total numbers of input
+            step_len = 2**i
+            index_c = int(math.log((self.N/n),2)) # index used for column
+            for j in range (self.N//n):
+                for k in range(step_len):
+                    OUT_vec_accu[n*j+k][index_c+1], OUT_vec_accu[n*j+k+step_len][index_c+1] = self.BF_r2(OUT_vec_accu[n*j+k][index_c], OUT_vec_accu[n*j+k+step_len][index_c], self.TF_array_accu[index_c][k])
+                    
+        self.final_res_accu = np.zeros(self.N,dtype = np.cdouble) # complex128,float64
+        for m in range (self.N):
+            self.final_res_accu[m] = OUT_vec_accu[self.bit_reverse(m)][index_c+1]      
+        
+        OUT_vec_accu[:,-1] = self.final_res_accu
+        
+        return OUT_vec_accu
+    
+    
+    def FFT_Fixed(self, In_vec, In_n_word, Data_n_word, TF_n_word, tf_change = 0, appt_stage = 0, approx = 0, Frac_Appr =0): # n_word 应该是一个数组 # TF_array,
+     # self.n_Word = n_word
+     OUT_vec_fxp = np.zeros((self.N,self.stages+1), dtype = np.cdouble)
+     # OUT_vec_fxp = Fxp(OUT_vec_fxp, True, 16, 15) 
+     OUT_vec_fxp[:,0] = Fxp(In_vec, True, In_n_word, In_n_word-1)  # change input data to fixed point
+     # print('fxp', OUT_vec_fxp[:,0])
+     
+     TF_array = np.zeros((self.stages,self.N >> 1), dtype = np.cdouble)
+     
+     counter = 0  # counter for stage number
+     appr = approx     # if appr = 1, do approximation.
+     
+     for i in range(self.stages-1, -1, -1): # if N = 128, i = 6,5,4,3,2,1,0
+         #print(i)
+         n = 2**(i+1) # total numbers of input
+         step_len = 2**i
+         index_c = int(math.log((self.N/n),2)) # index used for column
+         ## if(i == stage_to_modify )
+         ##   n_word = .....
+         ## elseif i != stage_to_modify
+         ##   n_word = default
+         for j in range (self.N//n):
+             for k in range(step_len):
+                 # previous code
+                 # OUT_vec_fxp[n*j+k][index_c+1], OUT_vec_fxp[n*j+k+step_len][index_c+1] = BF_r2(OUT_vec_fxp[n*j+k][index_c], OUT_vec_fxp[n*j+k+step_len][index_c],TF_array[index_c][k])
+                  if (counter == 0): # i = self.stage, counter = 0
+                     # print('0.stage',counter)
+                     # print('0.n_word', Data_n_word[counter])
+                     # quantization after addtion at the first stage
+                     # print(In_n_word)
+                     OUT_vec_fxp[n*j+k][index_c+1] = (OUT_vec_fxp[n*j+k][index_c] + OUT_vec_fxp[n*j+k+step_len][index_c])*0.5
+                     OUT_vec_fxp[n*j+k+step_len][index_c+1] = (OUT_vec_fxp[n*j+k][index_c] - OUT_vec_fxp[n*j+k+step_len][index_c])*0.5
+                     
+                     OUT_vec_fxp[n*j+k][index_c+1] = Fxp(OUT_vec_fxp[n*j+k][index_c+1], True, In_n_word, In_n_word - 1)
+                     OUT_vec_fxp[n*j+k+step_len][index_c+1] = Fxp(OUT_vec_fxp[n*j+k+step_len][index_c+1], True, In_n_word, In_n_word -1)
+                     
+                     # multiplication
+                     
+                     TF_array[index_c][k] = Fxp(self.TF_array_accu[index_c][k], True, TF_n_word[counter], TF_n_word[counter]-2) # counter = 0 时，对所乘的TF_n_word进行调整
+                     # print('stage0', TF_array[index_c][k])
+                     OUT_vec_fxp[n*j+k+step_len][index_c+1] = OUT_vec_fxp[n*j+k+step_len][index_c+1] * TF_array[index_c][k] # TF_array wordlength 也需要改
+               
+                     # quantization after multiplication
+                     OUT_vec_fxp[n*j+k][index_c+1] = Fxp(OUT_vec_fxp[n*j+k][index_c+1], True, Data_n_word[counter], Data_n_word[counter] - 1) # Data_n_word[counter+1]对应的是第一个stage的乘法输出的位宽
+                     OUT_vec_fxp[n*j+k+step_len][index_c+1] = Fxp(OUT_vec_fxp[n*j+k+step_len][index_c+1], True, Data_n_word[counter], Data_n_word[counter] - 1)
+                     # print(Data_n_word[counter])
+                  else:
+                    # print('stage',counter)
+                    # print(Data_n_word[counter], Data_n_word[counter-1])
+                    # after 0.stage, the addtion output wordlength is equal to the wordlength of the multiplication result wordlength of 0.stage
+                    # for example, if counter now is 1, then addtion result wordlenth is equal to 1. wordlength number of the n_word array
+                    OUT_vec_fxp[n*j+k][index_c+1] = (OUT_vec_fxp[n*j+k][index_c] + OUT_vec_fxp[n*j+k+step_len][index_c])*0.5
+                    OUT_vec_fxp[n*j+k+step_len][index_c+1] =(OUT_vec_fxp[n*j+k][index_c] - OUT_vec_fxp[n*j+k+step_len][index_c])*0.5
+                    
+                    OUT_vec_fxp[n*j+k][index_c+1] = Fxp(OUT_vec_fxp[n*j+k][index_c+1], True, Data_n_word[counter-1], Data_n_word[counter-1]-1 )
+                    OUT_vec_fxp[n*j+k+step_len][index_c+1] = Fxp(OUT_vec_fxp[n*j+k+step_len][index_c+1], True, Data_n_word[counter-1], Data_n_word[counter-1]-1)
+                    
+                    # print(Data_n_word[counter-1])
+                    # multiplication
+                    TF_array[index_c][k] = Fxp(self.TF_array_accu[index_c][k], True, TF_n_word[counter], TF_n_word[counter]-2) # Array for twiddle factor 原始位宽是2位整数，14位小数
+                    # print(f'stage{counter}', TF_array[index_c][k])
+                    OUT_vec_fxp[n*j+k+step_len][index_c+1] = OUT_vec_fxp[n*j+k+step_len][index_c+1] * TF_array[index_c][k] # TF_array wordlength 也需要改
+               
+                    # quantization for the multiplication output
+                    OUT_vec_fxp[n*j+k][index_c+1] = Fxp(OUT_vec_fxp[n*j+k][index_c+1], True, Data_n_word[counter], Data_n_word[counter] - 1) # 第counter个stage的位宽
+                    OUT_vec_fxp[n*j+k+step_len][index_c+1] = Fxp(OUT_vec_fxp[n*j+k+step_len][index_c+1], True, Data_n_word[counter], Data_n_word[counter] - 1)
+                        
+         counter = counter + 1  
+         # print("counter", counter)          
+                                     
+     # bit reverse order of output
+     self.final_res_fxp = np.zeros(self.N,dtype = np.cdouble) 
+     # final_res_fxp = Fxp(final_res, True, n_word, n_frac)
+     for m in range (self.N):
+         self.final_res_fxp[m] = OUT_vec_fxp[self.bit_reverse(m)][index_c+1]
+     
+     
+     OUT_vec_fxp[:,-1] = self.final_res_fxp
+    
+     return OUT_vec_fxp
+ 
+# n_word = [initial_n_word] * stages
+#[0.addition, 0.multiplication, 1.multiplication, 2.multiplication]
+
+    # generate input vector
+    def random_vector(self, seed_num, start=-1, end=1): # range [-1,1)
+       random_in = []
+       random.seed(seed_num)
+       for _ in range(self.N):
+           rand_num = random.uniform(start, end)
+           random_in.append(rand_num)
+       return random_in
+   
+    def sqnr_calculation(self):
+        # get flp_res and fxp_res
+        # flp_res = self.final_res_accu
+        # fxp_res = self.final_res_fxp
+        err = self.final_res_accu - self.final_res_fxp
+        
+        # signal power
+        accu_vec_abs = np.abs(self.final_res_accu)
+        squa_accu_vec_abs = np.square(accu_vec_abs)
+        sum_squa_accu = sum(squa_accu_vec_abs)
+        
+        # noise power
+        sum_err_flpfxp = np.sum(np.square(np.abs(err)))
+        
+        # sqnr
+        self.SNR_flp_fxp  = 10*math.log10(sum_squa_accu/sum_err_flpfxp)
+        
+###################################################################################################################
+# In[1]
+FFT_R2 = R2_DIF_FFT(64, 16, 16)
+SQNR_Req = 50
+initial_n_word = FFT_R2.n_Word
+# print(initial_n_word)
+In_n_word = FFT_R2.n_Word
+Data_n_word = [initial_n_word]*(FFT_R2.stages) # first cell is used for the 0.stage addition results wordlength
+# print(Data_n_word)
+TF_n_word = [initial_n_word]*FFT_R2.stages
+
+mean_SQNR_flp_fxp =0    
+
+# 初始化数据
+random_inputs=[]
+seed_num = 10
+for _ in range (seed_num):
+    random_inputs.append(np.array(FFT_R2.random_vector(_), dtype=np.cdouble))   
+# print(random_inputs)
+In_Wordlen_list = []
+mean_SQNR_flp_fxp_list = []
+
+for In_Wordlen in range(16, 0, -1):
+    SQNR_list=[]
+    for In_vec in random_inputs:
+        FFT_R2.TF_Gen()
+        FFT_R2.FFT_Accuracy(In_vec)
+        FFT_R2.FFT_Fixed(In_vec, In_Wordlen, Data_n_word, TF_n_word)
+        FFT_R2.sqnr_calculation()
+        # print(FFT_R2.SNR_flp_fxp)
+        SQNR_list.append(FFT_R2.SNR_flp_fxp)
+        
+    mean_SQNR_flp_fxp =  sum(SQNR_list) / len(SQNR_list)  # 计算均值
+    In_Wordlen_list.append(In_Wordlen)
+    mean_SQNR_flp_fxp_list.append(mean_SQNR_flp_fxp)
+    # print('Mean_Value', mean_SQNR_flp_fxp)
+    # print(In_Wordlen)
+    
+    if mean_SQNR_flp_fxp < SQNR_Req:
+        In_n_word = In_Wordlen + 1
+        break
+print(In_n_word)
+# 打包成元组列表
+result_array = np.column_stack((In_Wordlen_list, mean_SQNR_flp_fxp_list))
+print(result_array)
+                             
+# In[2]
+####################################################################################################################
+# print(TF_n_word)
+# for stage in range(FFT_R2.stages):
+#     for word_len in range(16, 0, -1): # range [16,1]
+#         Data_n_word[stage] = word_len
+#         if stage==4:
+#             break
+#     if stage==4:
+#         break
+# print(Data_n_word)
+FFT_R2 = R2_DIF_FFT(64, 16, 16)
+SQNR_Req = 50
+initial_n_word = FFT_R2.n_Word
+# print(initial_n_word)
+In_n_word = FFT_R2.n_Word
+Data_n_word = [initial_n_word]*(FFT_R2.stages) # first cell is used for the 0.stage addition results wordlength
+# print(Data_n_word)
+TF_n_word = [initial_n_word]*FFT_R2.stages
+####################################################################################################################
+for In_Wordlen in range (16, 0, -1):
+    # for seed in range(1):
+    In_vec = np.array(FFT_R2.random_vector(0), dtype = np.cdouble)
+    FFT_R2.TF_Gen()                                   # 需要调用才能在flp_res中使用self.TF_array_accu
+    FFT_R2.FFT_Accuracy(In_vec)
+    FFT_R2.FFT_Fixed(In_vec, In_Wordlen, Data_n_word, TF_n_word)
+    print(Data_n_word,TF_n_word)
+    FFT_R2.sqnr_calculation()
+    print(In_Wordlen)
+    print(FFT_R2.SNR_flp_fxp)
+    if (FFT_R2.SNR_flp_fxp < SQNR_Req):
+        In_n_word = In_Wordlen + 1
+        # flp_res = FFT_R2.FFT_Accuracy(In_vec)[:,-1]
+        # fxp_res = FFT_R2.FFT_Fixed(In_vec, In_Wordlen, Data_n_word, TF_n_word)[:,-1]
+        # FFT_R2.sqnr_calculation()
+        # print(FFT_R2.SNR_flp_fxp)
+        break
+    else:
+        continue
+#####################################################################################################################    
+# print(In_n_word)
+# for stage in range (FFT_R2.stages):
+#     for D_Wordlen in range (16, 0, -1):
+#         Data_n_word[stage] = D_Wordlen
+#         FFT_R2.TF_Gen()                                   # 需要调用才能在flp_res中使用self.TF_array_accu
+#         FFT_R2.FFT_Accuracy(In_vec)
+#         FFT_R2.FFT_Fixed(In_vec, In_Wordlen, Data_n_word, TF_n_word)
+#         FFT_R2.sqnr_calculation()
+#         # print(Data_n_word)
+#         print(FFT_R2.SNR_flp_fxp)
+#         if (FFT_R2.SNR_flp_fxp < SQNR_Req):
+#            Data_n_word[stage] = D_Wordlen + 1
+#            print(Data_n_word)
+#            break
+#         else:
+#             continue
+
+# for stage in range (FFT_R2.stages):
+#     for Wordlen in range(16, 0, 1):
+#         Data_n_word[stage] = 
+    
+    
+# In_vec = np.array(FFT_R2.random_vector(4,-1,1), dtype = np.cdouble)
+# # print(In_vec)
+# FFT_R2.TF_Gen()                                   # 需要调用才能在flp_res中使用self.TF_array_accu
+# flp_res = FFT_R2.FFT_Accuracy(In_vec)[:,-1]
+# fxp_res = FFT_R2.FFT_Fixed(In_vec, 16, Data_n_word, TF_n_word)[:,-1]
+# # print(flp_res)
+# # print(fxp_res)
+# # print(Data_n_word,TF_n_word)
+# FFT_R2.sqnr_calculation(flp_res, fxp_res)
+# print(FFT_R2.SNR_flp_fxp)
+
+
+
+# for stage in range(FFT_R2.stages):
+#     for word_len in range(16, -1, 0): # range [16,1]
+#         Data_n_word[stage] = word_len
+#         FFT_R2.FFT_Fixed(In_vec, Data_n_word, TF_n_word)
+#         SQNR = FFT_R2.SNR_flp_fxp
+#         if (SQNR<SQNR_Req):
+#             Data_n_word[stage] = word_len + 1
+#             break
+#         else:
+#             continue
+        
+#     for TF_word_len in range(16, -1, 0):
+#         TF_n_word[stage] = TF_word_len
+#         SQNR = FFT_R2.SNR_flp_fxp
+#         if (SQNR<SQNR_Req):
+#             TF_n_word[stage] = TF_word_len + 1
+#             break
+#         else:
+#             continue
+        
+# for seed in range (2):        
+#     poly_vec = np.array(FFT_R2.random_vector(seed), dtype = np.cdouble)
+#     print(poly_vec)
+##########################################################################################################
+print('*********',In_n_word)
+FFT_R2.TF_Gen() 
+FFT_R2.FFT_Accuracy(In_vec)
+FFT_R2.FFT_Fixed(In_vec, In_n_word, Data_n_word, TF_n_word)
+FFT_R2.sqnr_calculation()
+print(FFT_R2.SNR_flp_fxp)
+
+for stage in range (FFT_R2.stages):
+    for D_Wordlen in range (16, 0, -1):
+        Data_n_word[stage] = D_Wordlen
+        # 需要调用才能在flp_res中使用self.TF_array_accu
+        FFT_R2.FFT_Accuracy(In_vec)
+        FFT_R2.FFT_Fixed(In_vec, In_n_word, Data_n_word, TF_n_word)
+        FFT_R2.sqnr_calculation()
+        print(Data_n_word)
+        print(FFT_R2.SNR_flp_fxp)
+        if (FFT_R2.SNR_flp_fxp < SQNR_Req):
+            Data_n_word[stage] = D_Wordlen + 1
+            print(Data_n_word)
+            break
+        else:
+            continue
+################################################################################################################
+# In[3]
+print(Data_n_word)
+print(In_n_word)
+print(TF_n_word)
+
+fxp_res = FFT_R2.FFT_Fixed(In_vec, In_n_word, Data_n_word, TF_n_word)
+FFT_R2.sqnr_calculation()
+print(FFT_R2.SNR_flp_fxp)
+
+for stage in range (FFT_R2.stages):
+    for TF_Wordlen in range(16, 0, -1):
+        TF_n_word[stage] = TF_Wordlen
+        print('stage', TF_n_word)
+        # print(Data_n_word)
+        # print(In_n_word)
+        # FFT_R2.TF_Gen()
+        # FFT_R2.FFT_Accuracy(In_vec)
+        fxp_res = FFT_R2.FFT_Fixed(In_vec, In_n_word, Data_n_word, TF_n_word)
+        FFT_R2.sqnr_calculation()
+        print(TF_n_word)
+        print(FFT_R2.SNR_flp_fxp)
+        if (FFT_R2.SNR_flp_fxp < SQNR_Req):
+            TF_n_word[stage] = TF_Wordlen + 1
+            print(TF_n_word)
+            break
+        else:
+            continue
+        
+# [11, 14, 14, 15, 15, 16]
+# 10
+# [16, 16, 16, 16, 16, 16]
+# 50.107820288183646
+# [16, 16, 16, 16, 16, 16]
+# 50.107820288183646
+# [15, 16, 16, 16, 16, 16]
+# 50.107820288183646
