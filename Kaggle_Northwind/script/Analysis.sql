@@ -2,10 +2,11 @@
 -- 展示 SQL 能力、拼表、聚合统计等，适合 Power BI 可视化
 
 USE northwind;
-SELECT COUNT(*) FROM orders;
-SELECT COUNT(*) FROM employees;
-SELECT COUNT(*) FROM order_details;
-SELECT COUNT(*) FROM products;
+-- 统计各个表中有多少行
+-- SELECT COUNT(*) FROM orders;
+-- SELECT COUNT(*) FROM employees;
+-- SELECT COUNT(*) FROM order_details;
+-- SELECT COUNT(*) FROM products;
 
 
 -- ✅ 分析1：每年订单数量趋势
