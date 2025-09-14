@@ -1,6 +1,3 @@
--- 示例分析脚本（northwind_analysis_sql.sql）
--- 展示 SQL 能力、拼表、聚合统计等，适合 Power BI 可视化
-
 USE northwind;
 -- 统计各个表中有多少行
 -- SELECT COUNT(*) FROM orders;
@@ -19,7 +16,7 @@ GROUP BY order_year
 ORDER BY order_year;
 
 
--- 分析2：每位员工完成的订单总量（注意 Kaggle 版使用 employee_name 字段）
+-- 分析2：每位员工完成的订单总量
 SELECT 
   e.employeeID,  -- 员工 ID
   e.employeeName,  -- 员工姓名（Kaggle 版合并为一列）
@@ -49,7 +46,7 @@ FROM customers
 GROUP BY country
 ORDER BY customer_count DESC;
 
--- 分析5：每年收入（含折扣计算）
+-- 分析5：每年收入
 SELECT 
   LEFT(o.orderDate, 4) AS order_year,
   ROUND(SUM(od.unitPrice * od.quantity * (1 - od.discount)), 2) AS total_revenue
