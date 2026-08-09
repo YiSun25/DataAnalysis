@@ -92,3 +92,111 @@ RETURNING
     customer_id,
     created_at;
 
+BEGIN;
+
+
+-- 测试 external_order_id 的 UNIQUE 约束
+INSERT INTO orders (
+    external_order_id,
+    customer_id,
+    order_date,
+    status,
+    total_amount
+)
+VALUES (
+    'ERP-2026-001',   -- 故意使用已经存在的订单号
+    1,
+    '2026-08-03',
+    'CREATED',
+    100.00
+);
+
+ROLLBACK;
+
+--测试 Foreign Key
+BEGIN;
+
+INSERT INTO orders (
+    external_order_id,
+    customer_id,
+    order_date,
+    status,
+    total_amount
+)
+VALUES (
+    'ERP-2026-999',
+    999,              -- customers 中不存在
+    '2026-08-03',
+    'CREATED',
+    100.00
+);
+
+ROLLBACK;
+
+
+-- 测试CHECK，插入负数金额BEGIN;
+INSERT INTO orders (
+    external_order_id,
+    customer_id,
+    order_date,
+    status,
+    total_amount
+)
+VALUES (
+    'ERP-2026-998',
+    1,
+    '2026-08-03',
+    'CREATED',
+    -100.00           -- 故意错误
+);
+
+ROLLBACK;
+
+-- Creat shipment tables
+CREATE TABLE shipments(
+    shipment_id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    order_id INTEGER NOT NULL
+        REFERENCES orders(order_id),
+    warehouse_name VARCHAR(100) NOT NULL,
+    shipment_status VARCHAR(20) NOT NULL,
+    shipped_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL
+        DEFAULT CURRENT_TIMESTAMP
+);
+
+
+
+
+-- Practice Data
+INSERT INTO shipments (
+    order_id,
+    warehouse_name,
+    shipment_status,
+    shipped_at
+)
+VALUES
+    (
+        1,
+        'Berlin Warehouse',
+        'SHIPPED',
+        '2026-08-02 10:30:00+02'
+    ),
+    (
+        2,
+        'Berlin Warehouse',
+        'FAILED',
+        NULL
+    ),
+    (
+        2,
+        'Berlin Warehouse',
+        'CREATED',
+        NULL
+    )
+RETURNING *;
+-- =========================================================
+-- Verify shipment data
+-- =========================================================
+SELECT *
+FROM shipments
+ORDER BY shipment_id;
