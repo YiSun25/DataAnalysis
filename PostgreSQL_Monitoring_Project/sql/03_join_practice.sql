@@ -81,3 +81,20 @@ JOIN orders AS o
 JOIN shipments AS s
     ON o.order_id = s.order_id
 GROUP BY c.customer_name;
+
+
+-- =========================================================
+-- Q8: EXISTS 
+-- =========================================================
+SELECT
+    c.customer_name,
+    SUM(o.total_amount) AS total_order_amount
+FROM customers AS c
+JOIN orders AS o
+    ON c.customer_id = o.customer_id
+WHERE EXISTS (
+    SELECT 1
+    FROM shipments AS s
+    WHERE s.order_id = o.order_id
+)
+GROUP BY c.customer_name;
